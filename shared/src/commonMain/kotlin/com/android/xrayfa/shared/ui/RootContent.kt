@@ -1,0 +1,598 @@
+package com.android.xrayfa.shared.ui
+
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.outlined.Speed
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import com.android.xrayfa.model.Node
+import com.android.xrayfa.shared.config.NodeFormEditor
+import com.android.xrayfa.shared.navigation.ConfigComponent
+import com.android.xrayfa.shared.navigation.HomeComponent
+import com.android.xrayfa.shared.navigation.RootComponent
+import com.android.xrayfa.shared.navigation.RootStackConfig
+import com.android.xrayfa.shared.navigation.RootTab
+import com.android.xrayfa.shared.navigation.SettingsComponent
+import com.android.xrayfa.shared.resources.*
+import com.android.xrayfa.shared.ui.chrome.SharedListScaffold
+import com.android.xrayfa.shared.ui.config.ActualConfigSearchFab
+import com.android.xrayfa.shared.ui.config.OverlayScrollPending
+import com.android.xrayfa.shared.ui.config.IncyMenuItem
+import com.android.xrayfa.shared.ui.config.SharedConfigImportMenu
+import com.android.xrayfa.shared.ui.config.shouldCommitOverlayScroll
+import com.android.xrayfa.shared.ui.config.SharedConfigFilterBar
+import com.android.xrayfa.shared.ui.config.SharedConfigSection
+import com.android.xrayfa.shared.ui.config.SharedEditScreen
+import com.android.xrayfa.shared.ui.home.HomeQuickActions
+import com.android.xrayfa.shared.ui.home.HomeTopBar
+import com.android.xrayfa.shared.ui.nav.FloatingNavBottomFade
+import com.android.xrayfa.shared.ui.nav.FloatingNavBottomMargin
+import com.android.xrayfa.shared.ui.nav.FloatingNavItem
+import com.android.xrayfa.shared.ui.nav.XrayFloatingNav
+import com.android.xrayfa.shared.ui.nav.rememberFloatingNavClearance
+import com.android.xrayfa.shared.ui.nav.toFloatingNavItem
+import com.android.xrayfa.shared.ui.platform.LocalPlatformRootHooks
+import com.android.xrayfa.shared.ui.settings.SharedRouteSettingsScreen
+import com.android.xrayfa.shared.ui.settings.SharedSettingsAboutSection
+import com.android.xrayfa.shared.ui.settings.SharedSettingsGeneralSection
+import com.android.xrayfa.shared.ui.settings.SharedSettingsPlatformSection
+import com.android.xrayfa.shared.ui.settings.SharedSettingsSubscriptionSection
+import com.android.xrayfa.shared.ui.subscription.SharedSubscriptionScreen
+import com.android.xrayfa.shared.ui.theme.XrayIcons
+import com.arkivanov.decompose.ExperimentalDecomposeApi
+import com.arkivanov.decompose.extensions.compose.pages.ChildPages
+import com.arkivanov.decompose.extensions.compose.pages.PagesScrollAnimation
+import com.arkivanov.decompose.extensions.compose.stack.Children
+import com.arkivanov.decompose.extensions.compose.stack.animation.predictiveback.predictiveBackAnimation
+import com.arkivanov.decompose.extensions.compose.stack.animation.slide
+import com.arkivanov.decompose.extensions.compose.stack.animation.stackAnimation
+import com.arkivanov.decompose.extensions.compose.subscribeAsState
+import kotlinx.coroutines.launch
+import org.jetbrains.compose.resources.stringResource
+import org.koin.mp.KoinPlatform
+
+@OptIn(ExperimentalDecomposeApi::class)
+@Composable
+fun RootContent(
+    component: RootComponent,
+    modifier: Modifier = Modifier,
+) {
+    val pages by component.pages.subscribeAsState()
+    val stack by component.stack.subscribeAsState()
+    val stackIdle = stack.active.configuration is RootStackConfig.Idle
+    val selectedTab = pages.items.getOrNull(pages.selectedIndex)?.configuration ?: RootTab.Connection
+    // Нижняя плавающая навигация (Главная / Настройки) скрыта по запросу.
+    // Настройки по-прежнему доступны через кнопку-шестерёнку в HomeTopBar.
+    val showBottomNav = false
+    val configLabels = rememberConfigUiLabels()
+
+    Box(
+        modifier = modifier.fillMaxSize(),
+    ) {
+        val platformHooks = LocalPlatformRootHooks.current
+        val settingsLabels = rememberSettingsUiLabels()
+        val routeSettingsLabels = rememberRouteSettingsUiLabels()
+        var configComponentFromStack: ConfigComponent? by remember { mutableStateOf(null) }
+        
+        if (!platformHooks.usesDecomposePredictiveBack) {
+            platformHooks.SystemBackHandler(
+                enabled = !stackIdle,
+                onBack = component::navigateBack,
+            )
+        }
+
+        ChildPages(
+            modifier = Modifier.fillMaxSize(),
+            pages = component.pages,
+            onPageSelected = component::onPageSelected,
+        ) { _, child ->
+            when (child) {
+                is RootComponent.Child.Connection ->
+                    ConnectionTabScreen(
+                        component = child.component,
+                        onOpenSettings = { component.selectTab(RootTab.Settings) },
+                        onOpenConfig = component::openConfig,
+                        onAddNode = { component.openNodeEdit(0) },
+                        onImportClipboard = { configComponentFromStack?.onImportFromClipboard() },
+                        onScanQr = component::openQrScanner,
+                        onOpenSubscriptions = component::openSubscriptions,
+                    )
+                is RootComponent.Child.Settings ->
+                    SettingsTabScreen(
+                        component = child.component,
+                        onBack = { component.selectTab(RootTab.Connection) },
+                        onAppsClick = component::openApps,
+                        onLogcatClick = component::openLogcat,
+                        onRouteClick = component::openRouteSettings,
+                    )
+            }
+        }
+
+        Children(
+            stack = component.stack,
+            modifier = Modifier.fillMaxSize(),
+            animation =
+                if (platformHooks.usesDecomposePredictiveBack) {
+                    predictiveBackAnimation(
+                        backHandler = component.backHandler,
+                        fallbackAnimation = stackAnimation(slide()),
+                        onBack = component::navigateBack,
+                    )
+                } else {
+                    stackAnimation(slide())
+                },
+        ) { child ->
+            val fill = Modifier.fillMaxSize()
+            when (val instance = child.instance) {
+                RootComponent.StackChild.Idle -> Unit
+                is RootComponent.StackChild.Config -> {
+                    configComponentFromStack = instance.component
+                    ConfigPopupScreen(
+                        component = instance.component,
+                        onBack = component::navigateBack,
+                        onNodeSelectedNavigateHome = {},
+                        onOpenNodeEdit = component::openNodeEdit,
+                        onOpenSubscriptions = component::openSubscriptions,
+                        onOpenQrScanner = component::openQrScanner,
+                    )
+                }
+                is RootComponent.StackChild.Subscriptions ->
+                    SharedSubscriptionScreen(
+                        component = instance.component,
+                        onBack = component::navigateBack,
+                        labels = rememberSubscriptionUiLabels(),
+                        onSubscriptionApplied = { subscriptionId ->
+                            configComponentFromStack?.onSelectFilter(subscriptionId)
+                            component.navigateBack()
+                        },
+                        onScanQr = component::openQrScanner,
+                    )
+                RootComponent.StackChild.QrScanner ->
+                    platformHooks.QrScannerScreen(
+                        onResult = { result ->
+                            configComponentFromStack?.onImportFromLink(result)
+                            component.navigateBack()
+                        },
+                        onBack = component::navigateBack,
+                        title = settingsLabels.qrScannerTitle,
+                        permissionRequiredMessage = settingsLabels.qrPermissionRequired,
+                    )
+                RootComponent.StackChild.Apps ->
+                    platformHooks.AppsScreen(
+                        component = component.settingsComponent,
+                        onBack = component::navigateBack,
+                    )
+                RootComponent.StackChild.Logcat ->
+                    platformHooks.LogcatScreen(onBack = component::navigateBack)
+                RootComponent.StackChild.RouteSettings ->
+                    SharedRouteSettingsScreen(
+                        component = component.settingsComponent,
+                        onBack = component::navigateBack,
+                        labels = routeSettingsLabels,
+                    )
+                is RootComponent.StackChild.NodeEdit -> {
+                    val latestNode = configComponentFromStack?.nodeById(instance.nodeId)
+                    val nodeState = remember(instance.nodeId) { mutableStateOf<Node?>(null) }
+                    if (nodeState.value == null && latestNode != null) {
+                        nodeState.value = latestNode
+                    }
+                    val node = nodeState.value
+                    val nodeFormEditor = remember { KoinPlatform.getKoin().get<NodeFormEditor>() }
+                    SharedEditScreen(
+                        nodeId = instance.nodeId,
+                        protocol = node?.protocolPrefix,
+                        initialContent = node?.url,
+                        initialRemark = node?.remark,
+                        nodeFormEditor = nodeFormEditor,
+                        onBack = component::navigateBack,
+                        onSave = { form ->
+                            configComponentFromStack?.onSaveNodeEdit(instance.nodeId, form) { success ->
+                                if (success) component.navigateBack()
+                            }
+                        },
+                        labels = rememberEditUiLabels(),
+                        modifier = fill,
+                    )
+                }
+            }
+        }
+
+        AnimatedVisibility(
+            visible = showBottomNav,
+            enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+            exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
+            modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth(),
+        ) {
+            val navItems =
+                listOf(
+                    FloatingNavItem(
+                        id = RootTab.Connection.name,
+                        icon = XrayIcons.HomeActive,
+                        label = stringResource(Res.string.home),
+                    ),
+                    FloatingNavItem(
+                        id = RootTab.Settings.name,
+                        icon = XrayIcons.SettingsActive,
+                        label = stringResource(Res.string.settings_title),
+                    ),
+                )
+            Box(modifier = Modifier.fillMaxWidth()) {
+                FloatingNavBottomFade(modifier = Modifier.align(Alignment.BottomCenter))
+                XrayFloatingNav(
+                    items = navItems,
+                    selectedId = selectedTab.name,
+                    onItemSelected = { item ->
+                        component.selectTab(
+                            when (item.id) {
+                                RootTab.Connection.name -> RootTab.Connection
+                                RootTab.Settings.name -> RootTab.Settings
+                                else -> RootTab.Connection
+                            },
+                        )
+                    },
+                    modifier =
+                        Modifier
+                            .align(Alignment.BottomCenter)
+                            .windowInsetsPadding(WindowInsets.navigationBars)
+                            .padding(bottom = FloatingNavBottomMargin, start = 16.dp, end = 16.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ConfigPopupScreen(
+    component: ConfigComponent,
+    onBack: () -> Unit,
+    onNodeSelectedNavigateHome: () -> Unit,
+    onOpenNodeEdit: (Int) -> Unit,
+    onOpenSubscriptions: () -> Unit,
+    onOpenQrScanner: () -> Unit,
+) {
+    val platformHooks = LocalPlatformRootHooks.current
+    val configLabels = rememberConfigUiLabels()
+    val settingsLabels = rememberSettingsUiLabels()
+    val configState by component.state.subscribeAsState()
+    val configBottomClearance = rememberFloatingNavClearance()
+    val listState = rememberLazyListState()
+    val scope = rememberCoroutineScope()
+    var pendingOverlayScroll by remember { mutableStateOf<OverlayScrollPending?>(null) }
+    var shareNode by remember { mutableStateOf<Node?>(null) }
+    var showBugReport by remember { mutableStateOf(false) }
+
+    LaunchedEffect(pendingOverlayScroll, configState.searchQuery, configState.nodes) {
+        val pending = pendingOverlayScroll ?: return@LaunchedEffect
+        if (!shouldCommitOverlayScroll(pending, configState.searchQuery, configState.nodes)) {
+            return@LaunchedEffect
+        }
+        val index = configState.nodes.indexOfFirst { it.id == pending.nodeId }
+        if (index >= 0) {
+            listState.animateScrollToItem(index)
+        }
+        pendingOverlayScroll = null
+    }
+
+    SharedListScaffold(
+        title = stringResource(Res.string.config),
+        largeTitle = false,
+        collapseTitleOnScroll = true,
+        titleExpandKey = configState.selectedFilterId,
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
+        navigationIcon = {
+            IconButton(onClick = onBack) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = "Back",
+                )
+            }
+        },
+        footerUnderBar = {
+            SharedConfigFilterBar(
+                component = component,
+                trailingContent = {
+                    IconButton(onClick = component::onTestAllDelays) {
+                        Icon(
+                            imageVector = Icons.Outlined.Speed,
+                            contentDescription = configLabels.speedTestAllLabel,
+                            tint =
+                                if (configState.testingAll) {
+                                    MaterialTheme.colorScheme.secondary
+                                } else {
+                                    MaterialTheme.colorScheme.primary
+                                },
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
+                },
+            )
+        },
+        actions = {
+            IconButton(onClick = { onOpenNodeEdit(0) }) {
+                Icon(
+                    imageVector = Icons.Filled.Edit,
+                    contentDescription = configLabels.createConfigLabel,
+                )
+            }
+            SharedConfigImportMenu(
+                onImportFromClipboard = component::onImportFromClipboard,
+                onManageSubscriptions = onOpenSubscriptions,
+                onScanQr = onOpenQrScanner,
+                importFromClipboardLabel = stringResource(Res.string.clipboard_import),
+                manageSubscriptionsLabel = stringResource(Res.string.menu_subscription),
+                scanQrLabel = settingsLabels.scanQrLabel,
+                additionalMenuItems = { dismiss ->
+                    IncyMenuItem(
+                        text = configLabels.locateSelectedLabel,
+                        icon = XrayIcons.Star,
+                        onClick = {
+                            dismiss()
+                            scope.launch {
+                                val index = configState.nodes.indexOfFirst { it.selected }
+                                if (index >= 0) {
+                                    listState.animateScrollToItem(index)
+                                }
+                            }
+                        },
+                    )
+                    IncyMenuItem(
+                        text = configLabels.deleteAllLabel,
+                        icon = XrayIcons.DeleteAll,
+                        iconBgColor = MaterialTheme.colorScheme.error.copy(alpha = 0.18f),
+                        iconTintColor = MaterialTheme.colorScheme.error,
+                        onClick = {
+                            dismiss()
+                            component.onShowDeleteAll()
+                        },
+                    )
+                    IncyMenuItem(
+                        text = configLabels.bugReportLabel,
+                        icon = XrayIcons.BugReport,
+                        onClick = {
+                            dismiss()
+                            showBugReport = true
+                        },
+                    )
+                },
+            )
+        },
+    ) { innerPadding ->
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding),
+        ) {
+            SharedConfigSection(
+                component = component,
+                modifier = Modifier.fillMaxSize(),
+                labels = configLabels,
+                listState = listState,
+                showFilterBar = false,
+                listContentPadding = PaddingValues(bottom = configBottomClearance),
+                nodeDelayMap = configState.nodeDelayMap,
+                onNodeSelected = { node ->
+                    component.onSelectNode(node.id)
+                    onNodeSelectedNavigateHome()
+                },
+                onEmptyAddClick = { onOpenNodeEdit(0) },
+                onEditNode = { node -> onOpenNodeEdit(node.id) },
+                onDeleteNode = component::onShowDeleteNode,
+                onShareNode = { node -> shareNode = node },
+            )
+            ActualConfigSearchFab(
+                searchQuery = configState.searchQuery,
+                nodes = configState.nodes,
+                searchLabel = configLabels.searchLabel,
+                searchNoResultsLabel = configLabels.searchNoResultsLabel,
+                onSearch = component::onSearch,
+                onSearchExpanded = {},
+                onResultChosen = { nodeId ->
+                    pendingOverlayScroll =
+                        OverlayScrollPending(
+                            nodeId = nodeId,
+                            nodesAtTap = configState.nodes,
+                            queryWasBlankAtTap = configState.searchQuery.isBlank(),
+                        )
+                },
+                forceCollapsed = true,
+                showCollapsedTrigger = false,
+                openSearch = false,
+                onOpenSearchConsumed = {},
+            )
+        }
+    }
+
+    configState.deleteTarget?.let { node ->
+        AlertDialog(
+            onDismissRequest = component::onDismissDeleteNode,
+            title = { Text(configLabels.deleteNodeTitle) },
+            text = { Text(node.remark?.ifBlank { node.url } ?: node.url) },
+            confirmButton = {
+                TextButton(onClick = component::onConfirmDeleteNode) {
+                    Text(configLabels.deleteLabel)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = component::onDismissDeleteNode) {
+                    Text(configLabels.cancelLabel)
+                }
+            },
+        )
+    }
+
+    if (configState.pendingDeleteAll) {
+        AlertDialog(
+            onDismissRequest = component::onDismissDeleteAll,
+            title = { Text(configLabels.deleteAllTitle) },
+            text = { Text(configLabels.deleteAllConfirm) },
+            confirmButton = {
+                TextButton(onClick = component::onConfirmDeleteAll) {
+                    Text(configLabels.deleteLabel)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = component::onDismissDeleteAll) {
+                    Text(configLabels.cancelLabel)
+                }
+            },
+        )
+    }
+
+    shareNode?.let { node ->
+        platformHooks.ShareNode(node = node, onDismiss = { shareNode = null })
+    }
+    platformHooks.BugReport(visible = showBugReport, onDismiss = { showBugReport = false })
+}
+
+@Composable
+private fun ConnectionTabScreen(
+    component: HomeComponent,
+    onOpenSettings: () -> Unit,
+    onOpenConfig: () -> Unit,
+    onAddNode: () -> Unit,
+    onImportClipboard: () -> Unit,
+    onScanQr: () -> Unit,
+    onOpenSubscriptions: (() -> Unit)? = null,
+) {
+    val homeLabels = rememberHomeUiLabels()
+    val settingsLabels = rememberSettingsUiLabels()
+    val platformHooks = LocalPlatformRootHooks.current
+    val homeNavClearance = rememberFloatingNavClearance(extraAboveBar = 8.dp)
+    val homeState by component.state.subscribeAsState()
+    Scaffold(
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
+        topBar = {
+            HomeTopBar(
+                onSettingsClick = onOpenSettings,
+                onImportFromClipboard = onImportClipboard,
+                onScanQr = onScanQr,
+                onConfigClick = onOpenConfig,
+            )
+        },
+        containerColor = MaterialTheme.colorScheme.background,
+    ) { innerPadding ->
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding),
+        ) {
+            platformHooks.HomeSection(
+                component = component,
+                labels = homeLabels,
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .padding(bottom = homeNavClearance),
+                onOpenConfigPopup = onOpenConfig,
+            )
+            if (homeState.selectedNode == null) {
+                HomeQuickActions(
+                    addLabel = stringResource(Res.string.home_action_add),
+                    pasteLabel = stringResource(Res.string.home_action_paste),
+                    scanQrContentDescription = settingsLabels.scanQrLabel,
+                    onAdd = onAddNode,
+                    onPaste = onImportClipboard,
+                    onScanQr = onScanQr,
+                    onManageSubscriptions = onOpenSubscriptions,
+                    modifier =
+                        Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(horizontal = 20.dp, vertical = 12.dp)
+                            .padding(bottom = homeNavClearance - 8.dp - 24.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SettingsTabScreen(
+    component: SettingsComponent,
+    onBack: () -> Unit,
+    onAppsClick: () -> Unit,
+    onLogcatClick: () -> Unit,
+    onRouteClick: () -> Unit,
+) {
+    val settingsLabels = rememberSettingsUiLabels()
+    val platformHooks = LocalPlatformRootHooks.current
+
+    SharedListScaffold(
+        title = stringResource(Res.string.settings_title),
+        lockCollapsedTitle = true,
+        navigationIcon = {
+            IconButton(onClick = onBack) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = settingsLabels.cancelLabel,
+                )
+            }
+        },
+    ) { innerPadding ->
+        Column(
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+                    .verticalScroll(rememberScrollState())
+                    .padding(bottom = 16.dp),
+        ) {
+            SharedSettingsGeneralSection(
+                component = component,
+                scrollEnabled = false,
+                labels = settingsLabels,
+                additionalGeneralContent = {
+                    with(platformHooks) { SettingsGeneralExtras(component) }
+                },
+                additionalNetworkContent = {
+                    with(platformHooks) { SettingsNetworkExtras(component) }
+                },
+            )
+            SharedSettingsPlatformSection(
+                labels = settingsLabels,
+                onAppsClick = onAppsClick,
+                onLogcatClick = onLogcatClick,
+                onRouteClick = onRouteClick,
+            )
+            SharedSettingsSubscriptionSection(component = component, labels = settingsLabels)
+            SharedSettingsAboutSection(component = component, labels = settingsLabels)
+        }
+    }
+}

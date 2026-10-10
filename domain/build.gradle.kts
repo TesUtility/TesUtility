@@ -1,0 +1,66 @@
+import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
+
+plugins {
+    alias(libs.plugins.kotlin.multiplatform)
+    alias(libs.plugins.android.library)
+    alias(libs.plugins.kotlin.serialization)
+}
+
+val enableIosTargets = rootProject.extra["enableIosTargets"] as Boolean
+val enableWasmTargets = rootProject.extra["enableWasmTargets"] as Boolean
+
+kotlin {
+    androidTarget {
+        compilations.all {
+            compileTaskProvider.configure {
+                compilerOptions {
+                    jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_11)
+                }
+            }
+        }
+    }
+    if (enableIosTargets) {
+        iosArm64()
+        iosSimulatorArm64()
+        iosX64()
+    }
+    if (enableWasmTargets) {
+        @OptIn(ExperimentalWasmDsl::class)
+        wasmJs {
+            browser()
+        }
+    }
+
+    sourceSets {
+        commonMain.dependencies {
+            implementation(project(":common"))
+            implementation(libs.koin.core)
+            implementation(libs.kotlinx.serialization.json)
+            implementation(libs.kotlinx.coroutines.core)
+        }
+        androidMain.dependencies {
+            implementation(libs.gson)
+        }
+        commonTest.dependencies {
+            implementation(kotlin("test"))
+            implementation(libs.kotlinx.serialization.json)
+        }
+        androidUnitTest.dependencies {
+            implementation(libs.junit)
+            implementation(libs.gson)
+        }
+    }
+}
+
+android {
+    namespace = "com.android.xrayfa.domain"
+    compileSdk = 36
+
+    defaultConfig {
+        minSdk = 28
+    }
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_11
+        targetCompatibility = JavaVersion.VERSION_11
+    }
+}

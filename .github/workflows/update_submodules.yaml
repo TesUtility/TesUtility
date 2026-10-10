@@ -1,0 +1,43 @@
+name: Update Submodules
+on:
+  schedule:
+    - cron: "0 17 * * *"
+  workflow_dispatch:
+
+jobs:
+  update_sdk:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Checkout repository with submodules
+        uses: actions/checkout@v5
+        with:
+          submodules: recursive
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update submodules
+        run: |
+          # Update submodules to the latest remote commit
+          git submodule update --remote
+          
+          # Update the remote URL to the new repository name XrayFA
+          git remote set-url origin git@github.com:Q7DF1/XrayFA.git
+          
+          # Update submodule URLs
+          git submodule set-url AndroidLibXrayLite git@github.com:2dust/AndroidLibXrayLite.git
+          git submodule set-url tun2socks/src/main/jni/hev-socks5-tunnel git@github.com:heiher/hev-socks5-tunnel.git
+
+      - name: Create Pull Request
+        # Use this action to automatically create a PR instead of pushing directly
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "chore: update submodules"
+          title: "Update submodules"
+          body: "Automated PR to update submodules (AndroidLibXrayLite & hev-socks5-tunnel)."
+          branch: auto-update-submodules
+          base: main

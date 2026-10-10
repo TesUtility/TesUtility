@@ -1,0 +1,110 @@
+name: Google Play Release
+
+# Manual trigger only - for publishing to Google Play Store
+# Uses a different package name (APPLICATION_ID_PLAY) since the F-Droid
+# package name (com.android.xrayfa) is already registered on Google Play.
+on:
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: 'Build type (aab=Android App Bundle for Play Store, apk=APK for testing)'
+        required: true
+        type: choice
+        default: 'aab'
+        options:
+          - 'aab'
+          - 'apk'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+    - uses: actions/checkout@v5
+      with:
+        submodules: recursive
+
+    - name: set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+        cache: gradle
+
+    - name: Decode keystore
+      run: |
+        echo "$KEYSTORE_BASE64" | base64 --decode > androidApp/xrayfa.jks
+      env:
+        KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+
+    - name: Setup Golang
+      uses: actions/setup-go@v5.4.0
+      with:
+        go-version-file: './AndroidLibXrayLite/go.mod'
+
+    - name: Setup EXACT NDK for Reproducibility
+      run: |
+        wget -qO android-ndk.zip https://dl.google.com/android/repository/android-ndk-r28c-linux.zip
+        unzip -q android-ndk.zip
+        rm android-ndk.zip
+        echo "ANDROID_NDK_HOME=$(pwd)/android-ndk-r28c" >> $GITHUB_ENV
+
+    # Read Google Play APPLICATION_ID from gradle.properties
+    - name: Read Play Store APPLICATION_ID
+      run: |
+        PLAY_ID=$(grep "^APPLICATION_ID_PLAY=" gradle.properties | cut -d'=' -f2 | tr -d '\r')
+        echo "PLAY_APPLICATION_ID=$PLAY_ID" >> $GITHUB_ENV
+        echo "Play Store APPLICATION_ID: $PLAY_ID"
+
+    - name: Initialize Build Directory
+      run: |
+        sudo mkdir -p /home/vagrant/build/${{ env.PLAY_APPLICATION_ID }}
+        sudo chown -R $USER:$USER /home/vagrant
+        cp -a . /home/vagrant/build/${{ env.PLAY_APPLICATION_ID }}/
+
+    - name: Prepare native AAR
+      working-directory: /home/vagrant/build/${{ env.PLAY_APPLICATION_ID }}
+      env:
+        ANDROID_NDK_HOME: ${{ env.ANDROID_NDK_HOME }}
+      run: |
+        bash scripts/fdroid.sh prebuild
+        bash scripts/fdroid.sh bind
+
+    - name: Grant execute permission for gradlew
+      working-directory: /home/vagrant/build/${{ env.PLAY_APPLICATION_ID }}
+      run: chmod +x gradlew
+
+    - name: Build AAB for Google Play
+      if: ${{ github.event.inputs.build_type == 'aab' }}
+      working-directory: /home/vagrant/build/${{ env.PLAY_APPLICATION_ID }}
+      env:
+        KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+        KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+        KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+      run: |
+        ./gradlew bundleRelease -PAPPLICATION_ID=${{ env.PLAY_APPLICATION_ID }} --max-workers=1 --no-daemon
+
+    - name: Build APK for testing
+      if: ${{ github.event.inputs.build_type == 'apk' }}
+      working-directory: /home/vagrant/build/${{ env.PLAY_APPLICATION_ID }}
+      env:
+        KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+        KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+        KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+      run: |
+        ./gradlew assembleRelease -PAPPLICATION_ID=${{ env.PLAY_APPLICATION_ID }} --max-workers=1 --no-daemon
+
+    - name: Upload AAB
+      if: ${{ github.event.inputs.build_type == 'aab' }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: google-play-aab
+        path: /home/vagrant/build/${{ env.PLAY_APPLICATION_ID }}/androidApp/build/outputs/bundle/release/*.aab
+
+    - name: Upload APK
+      if: ${{ github.event.inputs.build_type == 'apk' }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: google-play-apk
+        path: /home/vagrant/build/${{ env.PLAY_APPLICATION_ID }}/androidApp/build/outputs/apk/release/*.apk
