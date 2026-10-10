@@ -15,7 +15,7 @@ scripts:
   - name: Download libv2ray.aar
     script: |
       mkdir -p androidApp/libs
-      curl -L -o androidApp/libs/libv2ray.aar "ПРЯМАЯ_ССЫЛКА_НА_ФАЙЛ"
+      curl -L -o androidApp/libs/libv2ray.aar "https://github.com/2dust/AndroidLibXrayLite/releases/download/v26.9.30/libv2ray.aar"
 
   - name: Build Android
     script: ./gradlew :androidApp:assembleDebug
