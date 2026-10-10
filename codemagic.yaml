@@ -11,3 +11,11 @@ workflows:
         script: ./gradlew :androidApp:assembleDebug
     artifacts:
       - androidApp/build/outputs/**/*.apk
+scripts:
+  - name: Download libv2ray.aar
+    script: |
+      mkdir -p androidApp/libs
+      curl -L -o androidApp/libs/libv2ray.aar "ПРЯМАЯ_ССЫЛКА_НА_ФАЙЛ"
+
+  - name: Build Android
+    script: ./gradlew :androidApp:assembleDebug
