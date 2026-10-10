@@ -1,12 +1,12 @@
 <div align="center">
 
-<img src="fastlane/metadata/android/en-US/images/icon.png" alt="XrayFA" width="120" />
+<img src="fastlane/metadata/android/en-US/images/icon.png" alt="TesUtility" width="120" />
 
-# XrayFA
+# TesUtility
 
 **A modern, powerful, and user-friendly Android (and preview iOS) client for [Xray-core](https://github.com/XTLS/Xray-core).**
 
-XrayFA provides a secure, high-speed proxy experience with a focus on simplicity and performance.
+TesUtility provides a secure, high-speed proxy experience with a focus on simplicity and performance.
 
 From **1.7.0** the Android UI runs on the shared Kotlin Multiplatform `RootContent` shell (Compose Multiplatform + Decompose). iOS uses the same shell with basic VPN / list / import / settings; remaining iOS slots are marked in-progress.
 
