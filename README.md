@@ -80,13 +80,13 @@ Ready to get started?
 
 1.  **Clone the repository** (with submodules):
     `
-    git clone --recursive https://github.com/Q7DF1/XrayFA.git
+    git clone --recursive https://github.com/Q7DF1/TesUtility.git
     cd XrayFA
     `
     *If you missed submodules:* `git submodule update --init --recursive`
 
 2.  **Open in Android Studio**:
-    Select the `XrayFA` folder and wait for Gradle sync.
+    Select the `TesUtility` folder and wait for Gradle sync.
 
 3.  **Build and Run**:
     Connect your device and press **Shift + F10**.
