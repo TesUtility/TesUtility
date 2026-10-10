@@ -111,7 +111,7 @@ Ready to get started?
 
 ## 🔗 Credits & Acknowledgements
 
-Special thanks to these projects that make XrayFA possible:
+Special thanks to these projects that make TesUtility possible:
 *   [Xray-core](https://github.com/XTLS/Xray-core) - The core network engine.
 *   [AndroidLibXrayLite](https://github.com/2dust/AndroidLibXrayLite)
 *   [hev-socks5-tunnel](https://github.com/heiher/hev-socks5-tunnel)
