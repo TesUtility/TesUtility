@@ -202,7 +202,7 @@ ksp {
 }
 
 dependencies {
-implementation(files("../androidApp/libs/libv2ray.aar"))
+    implementation(files("../androidApp/libs/libv2ray.aar"))
     implementation(fileTree(mapOf("dir" to "libs", "include" to listOf("*.aar", "*.jar"))))
     implementation(project(":tun2socks"))
     implementation(project(":common"))
