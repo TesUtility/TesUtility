@@ -1,16 +1,18 @@
 workflows:
-  android-workflow:
-    name: Android Build
-    max_build_duration: 60
-environment:
-  java: 17
-
-scripts:
-  - name: Make gradlew executable
-    script: chmod +x gradlew
-
-  - name: Build Android
-    script: ./gradlew :androidApp:assembleDebug
-
-artifacts:
-  - androidApp/build/outputs/**/*.apk
+  ios-workflow:
+    name: iOS Build
+    instance_type: mac_mini_m2
+    environment:
+      xcode: latest
+      cocoapods: default
+    scripts:
+      - name: Initialize keychain
+        script: keychain initialize
+      - name: Add certificates
+        script: keychain add-certificates
+      - name: Set up code signing settings
+        script: xcode-project use-profiles
+      - name: Build ipa for distribution
+        script: xcode-project build-ipa --workspace "iosApp/iosApp.xcodeproj" --scheme "iosApp"
+    artifacts:
+      - build/ios/ipa/*.ipa
